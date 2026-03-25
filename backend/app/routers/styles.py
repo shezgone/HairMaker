@@ -64,8 +64,12 @@ async def update_style(style_id: str, body: UpdateStyleRequest):
 
 
 @router.post("/{style_id}/image")
-async def upload_style_image(style_id: str, file: UploadFile = File(...)):
-    """원장이 헤어스타일 참고 이미지를 직접 업로드. style-catalog 버킷에 저장."""
+async def upload_style_image(
+    style_id: str,
+    file: UploadFile = File(...),
+    angle: str = Query("front", pattern="^(front|side)$"),
+):
+    """원장이 헤어스타일 참고 이미지를 직접 업로드. angle=front|side. style-catalog 버킷에 저장."""
     db = get_db()
 
     style = queries.get_style_by_id(db, style_id)
@@ -77,7 +81,7 @@ async def upload_style_image(style_id: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="이미지 파일만 업로드 가능합니다.")
 
     ext = file.filename.rsplit(".", 1)[-1].lower() if file.filename and "." in file.filename else "jpg"
-    path = f"{style_id}/{uuid.uuid4()}.{ext}"
+    path = f"{style_id}/{angle}.{ext}"
     image_bytes = await file.read()
 
     bucket = "style-catalog"
@@ -87,11 +91,29 @@ async def upload_style_image(style_id: str, file: UploadFile = File(...)):
         file_options={"content-type": content_type, "upsert": "true"},
     )
 
-    # public 버킷이므로 바로 public URL 생성
     result = db.storage.from_(bucket).get_public_url(path)
     public_url = result if isinstance(result, str) else result.get("publicUrl", "")
 
-    # DB 업데이트
-    db.table("hairstyles").update({"reference_image_url": public_url}).eq("id", style_id).execute()
+    # reference_images 배열: index 0 = front, index 1 = side
+    current_images: list = list(style.get("reference_images") or [])
+    if angle == "front":
+        if len(current_images) == 0:
+            current_images.append(public_url)
+        else:
+            current_images[0] = public_url
+        db.table("hairstyles").update({
+            "reference_image_url": public_url,
+            "reference_images": current_images,
+        }).eq("id", style_id).execute()
+    else:  # side
+        if len(current_images) == 0:
+            current_images.append("")  # front placeholder
+        if len(current_images) == 1:
+            current_images.append(public_url)
+        else:
+            current_images[1] = public_url
+        db.table("hairstyles").update({
+            "reference_images": current_images,
+        }).eq("id", style_id).execute()
 
-    return {"reference_image_url": public_url}
+    return {"angle": angle, "url": public_url}
