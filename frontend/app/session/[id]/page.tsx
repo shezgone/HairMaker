@@ -3,9 +3,10 @@ import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createAnalysisStream } from "@/lib/api";
 import FaceShapeCard from "@/components/analysis/FaceShapeCard";
+import PersonalColorCard from "@/components/analysis/PersonalColorCard";
 import StyleGrid from "@/components/styles/StyleGrid";
 import NotesPanel from "@/components/consultation/NotesPanel";
-import type { FaceAnalysis, HairStyle } from "@/lib/types";
+import type { FaceAnalysis, HairStyle, PersonalColor } from "@/lib/types";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -14,7 +15,7 @@ interface Props {
 type AnalysisState =
   | { phase: "loading" }
   | { phase: "analyzing"; chunk: string }
-  | { phase: "done"; analysis: FaceAnalysis; styles: HairStyle[] }
+  | { phase: "done"; analysis: FaceAnalysis; personalColor: PersonalColor | null; styles: HairStyle[] }
   | { phase: "error"; message: string };
 
 export default function SessionPage({ params }: Props) {
@@ -37,7 +38,12 @@ export default function SessionPage({ params }: Props) {
         }
 
         if (data.done && data.analysis) {
-          setState({ phase: "done", analysis: data.analysis, styles: data.styles || [] });
+          setState({
+            phase: "done",
+            analysis: data.analysis,
+            personalColor: data.personal_color ?? null,
+            styles: data.styles || [],
+          });
           es.close();
           return;
         }
@@ -109,6 +115,10 @@ export default function SessionPage({ params }: Props) {
         {state.phase === "done" && (
           <>
             <FaceShapeCard analysis={state.analysis} />
+
+            {state.personalColor && (
+              <PersonalColorCard personalColor={state.personalColor} />
+            )}
 
             <div className="space-y-3">
               <h2 className="text-white font-semibold text-lg">추천 헤어스타일</h2>

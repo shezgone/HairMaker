@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   photo_url TEXT,
   processed_photo_url TEXT,
   face_analysis JSONB,
+  personal_color JSONB,
   selected_style_id UUID REFERENCES hairstyles(id),
   consultation_notes TEXT,
   status TEXT DEFAULT 'active',  -- active | completed | archived
@@ -124,3 +125,9 @@ VALUES (
   '데모 디자이너',
   'admin'
 ) ON CONFLICT (email) DO NOTHING;
+
+-- ============================================================
+-- MIGRATIONS
+-- ============================================================
+-- Add personal_color column to existing sessions table (run once on existing DBs)
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS personal_color JSONB;

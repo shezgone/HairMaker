@@ -45,6 +45,22 @@ export interface Session {
   created_at: string;
 }
 
+export interface HairColor {
+  name: string;
+  description?: string;
+  hex: string;
+}
+
+export interface PersonalColor {
+  season: "spring" | "summer" | "autumn" | "winter";
+  tone: "warm" | "cool";
+  skin_tone: string;
+  undertone_description: string;
+  recommended_hair_colors: HairColor[];
+  avoid_hair_colors: HairColor[];
+  color_summary: string;
+}
+
 export interface SimulationJob {
   job_id: string;
   status: "pending" | "processing" | "done" | "error";

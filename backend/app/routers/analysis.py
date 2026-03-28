@@ -1,9 +1,10 @@
+import asyncio
 import json
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from app.db.client import get_db
 from app.db import queries
-from app.services import claude_service, storage_service
+from app.services import claude_service, color_service, storage_service
 
 router = APIRouter()
 
@@ -51,16 +52,26 @@ async def stream_analysis(session_id: str):
             yield f"data: {json.dumps({'error': 'Failed to parse analysis'})}\n\n"
             return
 
-        # Save analysis to session
-        queries.update_session(db, session_id, {"face_analysis": analysis})
-
-        # Fetch recommendations
+        # Run face analysis save + personal color analysis in parallel
         recommended_tags = analysis.get("recommended_style_tags", [])
         face_shape = analysis.get("face_shape", "oval")
         gender = session.get("gender", "female")
-        styles = queries.get_recommended_styles(db, face_shape, recommended_tags, gender)
 
-        yield f"data: {json.dumps({'analysis': analysis, 'styles': styles, 'done': True})}\n\n"
+        personal_color, styles = await asyncio.gather(
+            asyncio.to_thread(color_service.analyze_personal_color, image_bytes),
+            asyncio.to_thread(
+                queries.get_recommended_styles, db, face_shape, recommended_tags, gender
+            ),
+        )
+
+        # Save both analysis results to session
+        queries.update_session(
+            db,
+            session_id,
+            {"face_analysis": analysis, "personal_color": personal_color},
+        )
+
+        yield f"data: {json.dumps({'analysis': analysis, 'personal_color': personal_color, 'styles': styles, 'done': True})}\n\n"
 
     return StreamingResponse(
         event_generator(),
