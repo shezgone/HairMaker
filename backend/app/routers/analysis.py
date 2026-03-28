@@ -57,12 +57,14 @@ async def stream_analysis(session_id: str):
         face_shape = analysis.get("face_shape", "oval")
         gender = session.get("gender", "female")
 
-        personal_color, styles = await asyncio.gather(
-            asyncio.to_thread(color_service.analyze_personal_color, image_bytes),
-            asyncio.to_thread(
-                queries.get_recommended_styles, db, face_shape, recommended_tags, gender
-            ),
+        personal_color_task = asyncio.to_thread(color_service.analyze_personal_color, image_bytes)
+        styles_task = asyncio.to_thread(
+            queries.get_recommended_styles, db, face_shape, recommended_tags, gender
         )
+
+        results = await asyncio.gather(personal_color_task, styles_task, return_exceptions=True)
+        personal_color = results[0] if not isinstance(results[0], Exception) else None
+        styles = results[1] if not isinstance(results[1], Exception) else []
 
         # Save both analysis results to session
         queries.update_session(
