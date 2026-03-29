@@ -67,9 +67,11 @@ export default function SummaryPage({ params }: Props) {
             ✂ HairMaker 상담 결과
           </h1>
           <p className="text-zinc-500 text-sm print:text-zinc-600">
-            {new Date(summary?.session.created_at || "").toLocaleDateString("ko-KR", {
-              year: "numeric", month: "long", day: "numeric"
-            })}
+            {summary?.session.created_at
+              ? new Date(summary.session.created_at).toLocaleDateString("ko-KR", {
+                  year: "numeric", month: "long", day: "numeric"
+                })
+              : "날짜 정보 없음"}
           </p>
         </div>
 

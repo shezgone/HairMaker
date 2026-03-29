@@ -1,7 +1,10 @@
 import asyncio
+import logging
 import httpx
 import replicate
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 # FLUX Kontext Pro — 빠름, 자연스러운 합성
 FLUX_KONTEXT_PRO = "black-forest-labs/flux-kontext-pro"
@@ -60,8 +63,10 @@ def _build_person_description(face_analysis: dict, gender: str) -> str:
     return desc
 
 
-async def _submit_flux_with_reference(model: str, person_url: str, style: dict, face_analysis: dict = {}, gender: str = "female") -> str:
+async def _submit_flux_with_reference(model: str, person_url: str, style: dict, face_analysis: dict | None = None, gender: str = "female") -> str:
     """FLUX 텍스트 프롬프트 방식으로 헤어스타일 합성."""
+    if face_analysis is None:
+        face_analysis = {}
     style_description = style.get("simulation_prompt") or f"a {style['name']} hairstyle"
     person_desc = _build_person_description(face_analysis, gender)
     prompt = person_desc + " " + SIMULATION_PROMPT_TEMPLATE.format(style_description=style_description)
@@ -69,7 +74,7 @@ async def _submit_flux_with_reference(model: str, person_url: str, style: dict, 
     last_error: Exception | None = None
     for attempt in range(5):
         try:
-            prediction = replicate.predictions.create(
+            prediction = await replicate.predictions.async_create(
                 model=model,
                 input={
                     "prompt": prompt,
@@ -84,6 +89,7 @@ async def _submit_flux_with_reference(model: str, person_url: str, style: dict, 
         except Exception as e:
             err_str = str(e)
             if "429" in err_str or "throttled" in err_str.lower() or "rate limit" in err_str.lower():
+                logger.warning("Rate limited on attempt %d, retrying in %ds", attempt + 1, 12 * (attempt + 1))
                 last_error = e
                 await asyncio.sleep(12 * (attempt + 1))
                 continue
@@ -91,13 +97,13 @@ async def _submit_flux_with_reference(model: str, person_url: str, style: dict, 
     raise last_error  # type: ignore
 
 
-async def start_simulation(person_url: str, style: dict, face_analysis: dict = {}, gender: str = "female") -> str:
+async def start_simulation(person_url: str, style: dict, face_analysis: dict | None = None, gender: str = "female") -> str:
     """FLUX Kontext Pro — 빠름."""
     _set_token()
     return await _submit_flux_with_reference(FLUX_KONTEXT_PRO, person_url, style, face_analysis, gender)
 
 
-async def start_simulation_max(person_url: str, style: dict, face_analysis: dict = {}, gender: str = "female") -> str:
+async def start_simulation_max(person_url: str, style: dict, face_analysis: dict | None = None, gender: str = "female") -> str:
     """FLUX Kontext Max — 얼굴 보존 최고 수준."""
     _set_token()
     return await _submit_flux_with_reference(FLUX_KONTEXT_MAX, person_url, style, face_analysis, gender)
@@ -110,14 +116,16 @@ async def get_prediction_status(prediction_id: str) -> dict:
     """
     _set_token()
 
-    prediction = replicate.predictions.get(prediction_id)
+    prediction = await replicate.predictions.async_get(prediction_id)
+    status = prediction.status  # starting | processing | succeeded | failed | canceled
+
     result = {
-        "status": prediction.status,  # starting | processing | succeeded | failed | canceled
+        "status": status,
         "output": None,
         "error": None,
     }
 
-    if prediction.status == "succeeded":
+    if status == "succeeded":
         output = prediction.output
         # FLUX returns a URL or list of URLs
         if isinstance(output, list) and len(output) > 0:
@@ -125,8 +133,17 @@ async def get_prediction_status(prediction_id: str) -> dict:
         elif isinstance(output, str):
             result["output"] = output
 
-    if prediction.status == "failed":
-        result["error"] = str(prediction.error)
+    elif status in ("failed", "canceled"):
+        raw_error = prediction.error
+        # prediction.error can be a tuple-repr string from the model itself — clean it up
+        if raw_error:
+            error_str = str(raw_error)
+            if error_str.startswith("('") or error_str.startswith('("'):
+                result["error"] = "이미지 생성 중 모델 오류가 발생했습니다."
+            else:
+                result["error"] = error_str
+        else:
+            result["error"] = f"시뮬레이션이 {status} 상태로 종료되었습니다."
 
     return result
 

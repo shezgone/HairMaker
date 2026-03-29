@@ -11,33 +11,47 @@ export default function CameraCapture({ onCapture }: Props) {
   const [faceDetected, setFaceDetected] = useState(false);
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
   const detectIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Reuse a single offscreen canvas for face detection to avoid GC churn
+  const detectCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     startCamera();
     return () => stopCamera();
   }, [startCamera, stopCamera]);
 
-  // Lightweight face detection using skin color heuristic until TF.js loads
+  // Lightweight face detection using improved skin color heuristic
+  // Supports a wider range of skin tones (light to dark)
   useEffect(() => {
     if (!isActive) return;
+
+    if (!detectCanvasRef.current) {
+      detectCanvasRef.current = document.createElement("canvas");
+      detectCanvasRef.current.width = 80;
+      detectCanvasRef.current.height = 60;
+    }
+    const canvas = detectCanvasRef.current;
+
     detectIntervalRef.current = setInterval(() => {
       if (!videoRef.current) return;
-      const video = videoRef.current;
-      const canvas = document.createElement("canvas");
-      canvas.width = 80;
-      canvas.height = 60;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      ctx.drawImage(video, 0, 0, 80, 60);
+      ctx.drawImage(videoRef.current, 0, 0, 80, 60);
       const data = ctx.getImageData(0, 0, 80, 60).data;
       let skinPixels = 0;
+      const totalPixels = 80 * 60;
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i], g = data[i + 1], b = data[i + 2];
-        if (r > 95 && g > 40 && b > 20 && r > g && r > b && Math.abs(r - g) > 15) {
+        // Improved skin detection supporting diverse skin tones:
+        // Rule 1: General skin (lighter tones) — original + relaxed thresholds
+        // Rule 2: Darker skin tones — lower absolute values, warm bias
+        const isLightSkin = r > 80 && g > 30 && b > 15 && r > g && (r - g) > 10 && r > b;
+        const isDarkSkin = r > 45 && g > 25 && b > 10 && r > b && (r - b) > 5 && g < r * 0.95;
+        if (isLightSkin || isDarkSkin) {
           skinPixels++;
         }
       }
-      setFaceDetected(skinPixels > 200);
+      // Require at least ~4% of pixels to be skin-like
+      setFaceDetected(skinPixels > totalPixels * 0.04);
     }, 500);
 
     return () => {
@@ -48,17 +62,27 @@ export default function CameraCapture({ onCapture }: Props) {
   const handleCapture = useCallback(async () => {
     const blob = await capturePhoto();
     if (!blob) return;
+    // Revoke any previous preview URL before creating a new one
+    if (capturedPreview) URL.revokeObjectURL(capturedPreview);
     const url = URL.createObjectURL(blob);
     setCapturedPreview(url);
     onCapture(blob);
     stopCamera();
-  }, [capturePhoto, onCapture, stopCamera]);
+  }, [capturePhoto, onCapture, stopCamera, capturedPreview]);
 
   const handleRetake = () => {
     if (capturedPreview) URL.revokeObjectURL(capturedPreview);
     setCapturedPreview(null);
     startCamera();
   };
+
+  // Cleanup object URL on unmount
+  useEffect(() => {
+    return () => {
+      if (capturedPreview) URL.revokeObjectURL(capturedPreview);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (capturedPreview) {
     return (
@@ -90,7 +114,7 @@ export default function CameraCapture({ onCapture }: Props) {
           <p className="text-sm leading-relaxed">{error}</p>
           <div className="text-xs text-red-400 leading-relaxed text-left bg-red-950/50 rounded-lg p-3">
             <p className="font-medium mb-1">크롬 브라우저 해결 방법:</p>
-            <p>① 주소창 오른쪽 카메라 🎥 아이콘 클릭</p>
+            <p>① 주소창 왼쪽 자물쇠/카메라 아이콘 클릭</p>
             <p>② &quot;항상 허용&quot; 선택 후 페이지 새로고침</p>
           </div>
           <button

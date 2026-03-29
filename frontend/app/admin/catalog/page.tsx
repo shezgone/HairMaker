@@ -43,7 +43,7 @@ function ImageSlot({
       >
         {url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={label} className="w-full h-full object-cover object-top" />
+          <img src={url} alt={label} loading="lazy" className="w-full h-full object-cover object-top" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-zinc-600 text-2xl">✂</div>
         )}

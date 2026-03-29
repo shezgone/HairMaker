@@ -1,10 +1,14 @@
 import asyncio
 import json
+import logging
+import re
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from app.db.client import get_db
 from app.db import queries
 from app.services import claude_service, color_service, storage_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -40,16 +44,16 @@ async def stream_analysis(session_id: str):
 
         full_text = "".join(collected)
         # Strip markdown fences if present
-        if "```" in full_text:
-            parts = full_text.split("```")
-            full_text = parts[1] if len(parts) > 1 else full_text
-            if full_text.startswith("json"):
-                full_text = full_text[4:]
+        full_text = full_text.strip()
+        fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", full_text, re.DOTALL)
+        if fence_match:
+            full_text = fence_match.group(1).strip()
 
         try:
             analysis = json.loads(full_text.strip())
         except json.JSONDecodeError:
-            yield f"data: {json.dumps({'error': 'Failed to parse analysis'})}\n\n"
+            logger.error("Failed to parse SSE analysis JSON: %s", full_text[:500])
+            yield f"data: {json.dumps({'error': 'AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.'})}\n\n"
             return
 
         # Run face analysis save + personal color analysis in parallel
@@ -64,7 +68,11 @@ async def stream_analysis(session_id: str):
 
         results = await asyncio.gather(personal_color_task, styles_task, return_exceptions=True)
         personal_color = results[0] if not isinstance(results[0], Exception) else None
+        if isinstance(results[0], Exception):
+            logger.warning("Personal color analysis failed: %s", results[0])
         styles = results[1] if not isinstance(results[1], Exception) else []
+        if isinstance(results[1], Exception):
+            logger.warning("Style recommendation query failed: %s", results[1])
 
         # Save both analysis results to session
         queries.update_session(

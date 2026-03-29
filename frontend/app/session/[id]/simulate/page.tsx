@@ -132,15 +132,26 @@ export default function SimulatePage({ params }: Props) {
 
         {/* 오류 */}
         {job?.status === "error" && (
-          <div className="p-6 rounded-2xl bg-red-900/30 border border-red-700 text-center space-y-3">
-            <p className="text-red-300 font-medium">시뮬레이션 실패</p>
-            <p className="text-red-400 text-sm">{job.error || "알 수 없는 오류"}</p>
-            <button
-              onClick={() => { setJobId(null); setSelectedModel(null); }}
-              className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700 transition-colors"
-            >
-              다시 시도
-            </button>
+          <div className="p-6 rounded-2xl bg-red-900/30 border border-red-700 text-center space-y-4">
+            <p className="text-red-300 font-medium text-lg">시뮬레이션 실패</p>
+            <p className="text-red-400 text-sm">{job.error || "알 수 없는 오류가 발생했습니다."}</p>
+            <p className="text-zinc-500 text-xs">AI 모델의 일시적 오류일 수 있습니다. 다시 시도하면 대부분 해결됩니다.</p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => { setJobId(null); setSelectedModel(null); }}
+                className="px-5 py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-sm hover:bg-zinc-700 transition-colors font-medium"
+              >
+                다른 모델로 시도
+              </button>
+              {selectedModel && (
+                <button
+                  onClick={() => { setJobId(null); handleStartSimulation(selectedModel); }}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm hover:bg-emerald-500 transition-colors font-medium"
+                >
+                  같은 모델로 재시도
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

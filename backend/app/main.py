@@ -1,8 +1,23 @@
+import logging
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import sessions, photos, analysis, styles, simulate
+
+# Configure structured logging
+logging.basicConfig(
+    level=logging.INFO if settings.environment == "production" else logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stdout,
+)
+# Quieten noisy libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="HairMaker API",
@@ -28,3 +43,6 @@ app.include_router(simulate.router, prefix="/api/v1/simulate", tags=["simulate"]
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+logger.info("HairMaker API started (env=%s)", settings.environment)

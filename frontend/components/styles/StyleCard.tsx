@@ -25,6 +25,7 @@ export default function StyleCard({ style, isSelected, onSelect }: Props) {
           <img
             src={style.reference_image_url}
             alt={style.name}
+            loading="lazy"
             className="w-full h-full object-cover"
           />
         ) : (

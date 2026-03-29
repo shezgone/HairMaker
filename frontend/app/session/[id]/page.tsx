@@ -27,17 +27,25 @@ export default function SessionPage({ params }: Props) {
   useEffect(() => {
     const es = createAnalysisStream(sessionId);
 
+    // Timeout: if no 'done' event after 90 seconds, abort
+    const timeout = setTimeout(() => {
+      setState({ phase: "error", message: "분석 시간이 초과되었습니다. 다시 시도해주세요." });
+      es.close();
+    }, 90_000);
+
     es.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
 
         if (data.error) {
+          clearTimeout(timeout);
           setState({ phase: "error", message: data.error });
           es.close();
           return;
         }
 
         if (data.done && data.analysis) {
+          clearTimeout(timeout);
           setState({
             phase: "done",
             analysis: data.analysis,
@@ -57,11 +65,15 @@ export default function SessionPage({ params }: Props) {
     };
 
     es.onerror = () => {
-      setState({ phase: "error", message: "분석 중 오류가 발생했습니다." });
+      clearTimeout(timeout);
+      setState({ phase: "error", message: "분석 중 연결이 끊어졌습니다. 다시 시도해주세요." });
       es.close();
     };
 
-    return () => es.close();
+    return () => {
+      clearTimeout(timeout);
+      es.close();
+    };
   }, [sessionId]);
 
   const handleSelectStyle = (style: HairStyle) => {

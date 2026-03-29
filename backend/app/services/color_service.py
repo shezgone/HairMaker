@@ -1,7 +1,11 @@
 import json
+import logging
+import re
 import anthropic
 from app.config import settings
 from app.services.image_service import image_to_base64
+
+logger = logging.getLogger(__name__)
 
 COLOR_SYSTEM_PROMPT = """You are a certified personal color consultant specializing in Korean 퍼스널컬러 (seasonal color analysis) for hair salons.
 Analyze the customer's photo to determine their seasonal color type and provide hair color recommendations.
@@ -69,8 +73,18 @@ def analyze_personal_color(image_bytes: bytes) -> dict:
     )
 
     raw = message.content[0].text.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    return json.loads(raw)
+    raw = _strip_markdown_fences(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse personal color response: %s\nRaw: %s", e, raw[:500])
+        raise
+
+
+def _strip_markdown_fences(text: str) -> str:
+    """Remove markdown code fences from Claude responses."""
+    text = text.strip()
+    match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return text

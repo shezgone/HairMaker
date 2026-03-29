@@ -1,4 +1,7 @@
+import logging
 from supabase import Client
+
+logger = logging.getLogger(__name__)
 
 
 def get_recommended_styles(
@@ -13,7 +16,6 @@ def get_recommended_styles(
     with Claude's recommended_style_tags.
     gender: 'male' | 'female'  — 'unisex' styles always included for both genders.
     """
-    # Include exact gender match + unisex (gender 컬럼 없으면 전체 조회)
     try:
         response = (
             db.table("hairstyles")
@@ -25,6 +27,7 @@ def get_recommended_styles(
         )
     except Exception as e:
         if "gender" in str(e):
+            logger.info("gender column not found, falling back to unfiltered query")
             response = (
                 db.table("hairstyles")
                 .select("*")
@@ -33,6 +36,7 @@ def get_recommended_styles(
                 .execute()
             )
         else:
+            logger.error("Failed to query recommended styles: %s", e)
             raise
     styles = response.data or []
 
@@ -47,8 +51,12 @@ def get_recommended_styles(
 
 
 def get_style_by_id(db: Client, style_id: str) -> dict | None:
-    response = db.table("hairstyles").select("*").eq("id", style_id).single().execute()
-    return response.data
+    try:
+        response = db.table("hairstyles").select("*").eq("id", style_id).single().execute()
+        return response.data
+    except Exception as e:
+        logger.error("Failed to get style %s: %s", style_id, e)
+        return None
 
 
 def create_session(db: Client, salon_id: str, designer_id: str, gender: str = "female") -> dict:
@@ -60,7 +68,7 @@ def create_session(db: Client, salon_id: str, designer_id: str, gender: str = "f
         )
     except Exception as e:
         if "gender" in str(e):
-            # gender 컬럼이 아직 없는 경우 fallback
+            logger.info("gender column not found in sessions, falling back without gender")
             response = (
                 db.table("sessions")
                 .insert({"salon_id": salon_id, "designer_id": designer_id, "status": "active"})
@@ -72,18 +80,29 @@ def create_session(db: Client, salon_id: str, designer_id: str, gender: str = "f
 
 
 def get_session(db: Client, session_id: str) -> dict | None:
-    response = db.table("sessions").select("*").eq("id", session_id).single().execute()
-    return response.data
+    try:
+        response = db.table("sessions").select("*").eq("id", session_id).single().execute()
+        return response.data
+    except Exception as e:
+        logger.error("Failed to get session %s: %s", session_id, e)
+        return None
 
 
-def update_session(db: Client, session_id: str, updates: dict) -> dict:
-    response = (
-        db.table("sessions")
-        .update(updates)
-        .eq("id", session_id)
-        .execute()
-    )
-    return response.data[0]
+def update_session(db: Client, session_id: str, updates: dict) -> dict | None:
+    try:
+        response = (
+            db.table("sessions")
+            .update(updates)
+            .eq("id", session_id)
+            .execute()
+        )
+        if not response.data:
+            logger.warning("update_session returned no data for session %s", session_id)
+            return None
+        return response.data[0]
+    except Exception as e:
+        logger.error("Failed to update session %s: %s", session_id, e)
+        return None
 
 
 def create_simulation_job(
@@ -104,17 +123,28 @@ def create_simulation_job(
 
 
 def get_simulation_job(db: Client, job_id: str) -> dict | None:
-    response = (
-        db.table("simulation_jobs").select("*").eq("id", job_id).single().execute()
-    )
-    return response.data
+    try:
+        response = (
+            db.table("simulation_jobs").select("*").eq("id", job_id).single().execute()
+        )
+        return response.data
+    except Exception as e:
+        logger.error("Failed to get simulation job %s: %s", job_id, e)
+        return None
 
 
-def update_simulation_job(db: Client, job_id: str, updates: dict) -> dict:
-    response = (
-        db.table("simulation_jobs")
-        .update(updates)
-        .eq("id", job_id)
-        .execute()
-    )
-    return response.data[0]
+def update_simulation_job(db: Client, job_id: str, updates: dict) -> dict | None:
+    try:
+        response = (
+            db.table("simulation_jobs")
+            .update(updates)
+            .eq("id", job_id)
+            .execute()
+        )
+        if not response.data:
+            logger.warning("update_simulation_job returned no data for job %s", job_id)
+            return None
+        return response.data[0]
+    except Exception as e:
+        logger.error("Failed to update simulation job %s: %s", job_id, e)
+        return None

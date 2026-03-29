@@ -1,7 +1,11 @@
 import json
+import logging
+import re
 import anthropic
 from app.config import settings
 from app.services.image_service import image_to_base64
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are a professional hair design consultant with deep expertise in face shape analysis and hairstyle recommendations.
 Analyze customer face photos and return structured JSON recommendations that a hair designer can use to guide their consultation.
@@ -65,12 +69,21 @@ async def analyze_face(image_bytes: bytes) -> dict:
     )
 
     raw = message.content[0].text.strip()
-    # Strip any accidental markdown code fences
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    return json.loads(raw)
+    raw = _strip_markdown_fences(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse Claude face analysis response: %s\nRaw: %s", e, raw[:500])
+        raise
+
+
+def _strip_markdown_fences(text: str) -> str:
+    """Remove markdown code fences (```json ... ```) from Claude responses."""
+    text = text.strip()
+    match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return text
 
 
 async def analyze_face_stream(image_bytes: bytes):
