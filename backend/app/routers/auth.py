@@ -58,7 +58,7 @@ async def register(body: RegisterRequest):
         if "already" in error_msg.lower() or "duplicate" in error_msg.lower():
             raise HTTPException(status_code=409, detail="이미 등록된 이메일입니다.")
         logger.error("Auth user creation failed: %s", e)
-        raise HTTPException(status_code=400, detail=f"회원가입에 실패했습니다: {error_msg[:200]}")
+        raise HTTPException(status_code=400, detail="회원가입에 실패했습니다.")
 
     # 2. Salon 생성
     slug = body.email.split("@")[0].lower().replace(".", "-")
