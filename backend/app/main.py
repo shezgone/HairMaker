@@ -76,9 +76,23 @@ logger.info("HairMaker API started (env=%s)", settings.environment)
 async def debug_env():
     """임시 디버그 — 배포 후 삭제할 것"""
     from app.config import settings
+    from supabase import create_client
     key = settings.supabase_service_role_key
+    # 직접 Supabase admin API 테스트
+    test_result = "untested"
+    try:
+        client = create_client(settings.supabase_url, key)
+        res = client.auth.admin.create_user({
+            "email": "railwaytest@debug.com",
+            "password": "Test1234",
+            "email_confirm": True,
+        })
+        client.auth.admin.delete_user(res.user.id)
+        test_result = "SUCCESS"
+    except Exception as e:
+        test_result = f"FAIL: {str(e)[:200]}"
     return {
         "key_prefix": key[:15] if key else "MISSING",
         "key_length": len(key) if key else 0,
-        "supabase_url": settings.supabase_url[:40],
+        "admin_create_user": test_result,
     }
