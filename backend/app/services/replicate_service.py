@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import logging
 import httpx
 import replicate
@@ -16,23 +17,9 @@ FLUX_KONTEXT_MODEL = FLUX_KONTEXT_PRO  # 기본값
 
 # 텍스트 프롬프트만 사용할 때
 SIMULATION_PROMPT_TEMPLATE = (
-    "Replace ONLY the hair with: {style_description}. "
-    "This is the SAME person — do NOT change their identity in any way. "
-    "Face shape, face structure, bone structure, skin tone, skin texture, pores, wrinkles, age, eyes, eyebrows, nose, lips, ears, and jawline MUST remain pixel-perfect identical to the input photo. "
-    "Do NOT beautify, retouch, slim, or alter the face in any way. "
-    "Background, lighting direction, clothing, shoulders, and body MUST stay exactly the same. "
-    "Only the hair region changes. The result must look like the same photo with a different hairstyle applied by a hairdresser."
-)
-
-# 참고 이미지 합성 방식 (좌: 손님, 우: 참고 헤어) 프롬프트
-REFERENCE_PROMPT_TEMPLATE = (
-    "This image shows TWO photos side by side separated by a dark divider. "
-    "LEFT photo: the person whose hairstyle needs to change. "
-    "RIGHT photo: the reference hairstyle to apply. "
-    "Task: Apply EXACTLY the hairstyle shown in the RIGHT photo to the person in the LEFT photo. "
-    "Copy the hair shape, length, volume, layers, and texture from the RIGHT photo precisely. "
-    "The LEFT person's face, skin, age, facial features, background, clothing, and body MUST remain completely unchanged — pixel-perfect identical. "
-    "Output only the LEFT person with the new hairstyle. Do NOT show two photos in the output."
+    "Change this person's hairstyle to: {style_description}. "
+    "The hair change should be clearly visible and noticeable. "
+    "Keep the same face, skin, expression, background, and clothing unchanged."
 )
 
 
@@ -45,45 +32,64 @@ def _set_token():
 def _build_person_description(face_analysis: dict, gender: str) -> str:
     """face_analysis 데이터로 인물 묘사 문자열 생성 — identity drift 방지용."""
     gender_str = "male" if gender == "male" else "female"
-
     face_shape = face_analysis.get("face_shape", "")
-    features = face_analysis.get("facial_features") or {}
-    jaw = features.get("jaw_width", "")
-    forehead = features.get("forehead_width", "")
 
-    desc = f"The person in this photo is an East Asian {gender_str}"
+    desc = f"Photo of an East Asian {gender_str}"
     if face_shape:
-        desc += f" with a {face_shape} face shape"
-    if jaw:
-        desc += f", {jaw} jaw width"
-    if forehead:
-        desc += f", {forehead} forehead"
-    desc += ". Preserve all East Asian facial features exactly — monolid eyes, flat nose bridge, and skin tone MUST remain unchanged."
+        desc += f" with a {face_shape} face"
+    desc += "."
 
     return desc
 
 
-async def _submit_flux_with_reference(model: str, person_url: str, style: dict, face_analysis: dict | None = None, gender: str = "female") -> str:
-    """FLUX 텍스트 프롬프트 방식으로 헤어스타일 합성."""
+def _bytes_to_data_uri(image_bytes: bytes, media_type: str = "image/jpeg") -> str:
+    """이미지 바이트를 data URI로 변환."""
+    b64 = base64.b64encode(image_bytes).decode("utf-8")
+    return f"data:{media_type};base64,{b64}"
+
+
+async def _submit_flux_with_reference(
+    model: str,
+    person_url: str,
+    style: dict,
+    face_analysis: dict | None = None,
+    gender: str = "female",
+    reference_prompt: str | None = None,
+) -> str:
+    """FLUX 헤어스타일 합성.
+
+    reference_prompt가 있으면 Claude Vision이 분석한 헤어스타일 설명을 사용,
+    없으면 style의 텍스트 설명을 사용.
+    """
     if face_analysis is None:
         face_analysis = {}
-    style_description = style.get("simulation_prompt") or f"a {style['name']} hairstyle"
+
     person_desc = _build_person_description(face_analysis, gender)
+
+    # 프롬프트 우선순위: reference_prompt > description > style name
+    if reference_prompt:
+        style_description = reference_prompt
+    else:
+        style_description = style.get("description") or style.get("simulation_prompt") or f"a {style['name']} hairstyle"
+
     prompt = person_desc + " " + SIMULATION_PROMPT_TEMPLATE.format(style_description=style_description)
+    input_image = person_url
 
     last_error: Exception | None = None
     for attempt in range(5):
         try:
+            input_params = {
+                "prompt": prompt,
+                "input_image": input_image,
+                "output_format": "jpg",
+                "output_quality": 95,
+                "safety_tolerance": 2,
+                "prompt_upsampling": False,
+            }
+            # 원본 비율 유지를 위해 aspect_ratio 미지정 (모델이 input_image 비율 따름)
             prediction = await replicate.predictions.async_create(
                 model=model,
-                input={
-                    "prompt": prompt,
-                    "input_image": person_url,
-                    "output_format": "jpg",
-                    "output_quality": 95,
-                    "safety_tolerance": 2,
-                    "prompt_upsampling": False,
-                },
+                input=input_params,
             )
             return prediction.id
         except Exception as e:
@@ -97,16 +103,34 @@ async def _submit_flux_with_reference(model: str, person_url: str, style: dict, 
     raise last_error  # type: ignore
 
 
-async def start_simulation(person_url: str, style: dict, face_analysis: dict | None = None, gender: str = "female") -> str:
+async def start_simulation(
+    person_url: str,
+    style: dict,
+    face_analysis: dict | None = None,
+    gender: str = "female",
+    reference_prompt: str | None = None,
+) -> str:
     """FLUX Kontext Pro — 빠름."""
     _set_token()
-    return await _submit_flux_with_reference(FLUX_KONTEXT_PRO, person_url, style, face_analysis, gender)
+    return await _submit_flux_with_reference(
+        FLUX_KONTEXT_PRO, person_url, style, face_analysis, gender,
+        reference_prompt,
+    )
 
 
-async def start_simulation_max(person_url: str, style: dict, face_analysis: dict | None = None, gender: str = "female") -> str:
+async def start_simulation_max(
+    person_url: str,
+    style: dict,
+    face_analysis: dict | None = None,
+    gender: str = "female",
+    reference_prompt: str | None = None,
+) -> str:
     """FLUX Kontext Max — 얼굴 보존 최고 수준."""
     _set_token()
-    return await _submit_flux_with_reference(FLUX_KONTEXT_MAX, person_url, style, face_analysis, gender)
+    return await _submit_flux_with_reference(
+        FLUX_KONTEXT_MAX, person_url, style, face_analysis, gender,
+        reference_prompt,
+    )
 
 
 async def get_prediction_status(prediction_id: str) -> dict:

@@ -11,7 +11,7 @@ interface Props {
 export default function StyleGrid({ styles, onSelect, selectedId }: Props) {
   if (styles.length === 0) {
     return (
-      <div className="py-12 text-center text-zinc-500">
+      <div className="py-12 text-center text-gray-400">
         추천 스타일을 불러오는 중입니다...
       </div>
     );

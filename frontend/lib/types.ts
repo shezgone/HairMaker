@@ -17,6 +17,7 @@ export interface FaceAnalysis {
 
 export interface HairStyle {
   id: string;
+  salon_id: string;
   name: string;
   description: string;
   style_tags: string[];
@@ -39,6 +40,7 @@ export interface Session {
   photo_url?: string;
   processed_photo_url?: string;
   face_analysis?: FaceAnalysis;
+  personal_color?: PersonalColor;
   selected_style_id?: string;
   consultation_notes?: string;
   status: "active" | "completed" | "archived";
@@ -66,4 +68,20 @@ export interface SimulationJob {
   status: "pending" | "processing" | "done" | "error";
   result_url?: string;
   error?: string;
+}
+
+export interface AuthUser {
+  id: string;
+  auth_user_id: string;
+  email: string;
+  name: string;
+  role: "designer" | "admin";
+  salon_id: string;
+  salon_name: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  refresh_token: string;
+  user: AuthUser;
 }

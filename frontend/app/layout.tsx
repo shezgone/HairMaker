@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
+import { AuthProvider } from "@/lib/auth-context";
+import AuthGuard from "@/components/AuthGuard";
+import BottomTabBar from "@/components/BottomTabBar";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,13 +16,13 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "HairMaker",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#09090b",
+  themeColor: "#ffffff",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -32,12 +35,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko" className={`${geistSans.variable} h-full antialiased dark`}>
+    <html lang="ko" className={`${geistSans.variable} h-full antialiased`}>
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
-      <body className="min-h-full bg-zinc-950 text-zinc-100">{children}</body>
+      <body className="min-h-full bg-gray-50 text-gray-900">
+        <AuthProvider>
+          <AuthGuard>
+            <div className="pb-tab-bar">
+              {children}
+            </div>
+            <BottomTabBar />
+          </AuthGuard>
+        </AuthProvider>
+      </body>
     </html>
   );
 }

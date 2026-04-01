@@ -131,3 +131,34 @@ VALUES (
 -- ============================================================
 -- Add personal_color column to existing sessions table (run once on existing DBs)
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS personal_color JSONB;
+
+-- Add gender column to sessions and hairstyles tables
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'female';
+ALTER TABLE hairstyles ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'female';
+
+-- ============================================================
+-- MIGRATIONS — Gender columns (P1-5)
+-- ============================================================
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'female';
+ALTER TABLE hairstyles ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'female';
+CREATE INDEX IF NOT EXISTS idx_hairstyles_gender ON hairstyles (gender);
+
+-- ============================================================
+-- MIGRATIONS — Salon-scoped hairstyle catalog
+-- ============================================================
+-- Add salon_id FK to hairstyles for per-salon catalog isolation
+ALTER TABLE hairstyles ADD COLUMN IF NOT EXISTS salon_id UUID REFERENCES salons(id) ON DELETE CASCADE;
+
+-- Index for efficient salon-scoped queries
+CREATE INDEX IF NOT EXISTS idx_hairstyles_salon ON hairstyles (salon_id);
+
+-- Drop old global unique constraint on name, replace with per-salon unique
+-- (safe: IF EXISTS prevents errors on fresh DBs)
+ALTER TABLE hairstyles DROP CONSTRAINT IF EXISTS hairstyles_name_key;
+ALTER TABLE hairstyles ADD CONSTRAINT hairstyles_salon_name_unique UNIQUE (salon_id, name);
+
+-- Assign existing global hairstyles to the demo salon for backward compatibility
+UPDATE hairstyles SET salon_id = '00000000-0000-0000-0000-000000000001' WHERE salon_id IS NULL;
+
+-- Make salon_id NOT NULL after migration
+ALTER TABLE hairstyles ALTER COLUMN salon_id SET NOT NULL;

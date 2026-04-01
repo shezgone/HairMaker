@@ -27,7 +27,6 @@ export default function NotesPanel({ sessionId, initialNotes = "" }: Props) {
       } catch {
         setSaveStatus("error");
         retryCountRef.current += 1;
-        // Auto-retry once after 5s
         if (retryCountRef.current <= 2) {
           saveTimeoutRef.current = setTimeout(async () => {
             try {
@@ -44,13 +43,13 @@ export default function NotesPanel({ sessionId, initialNotes = "" }: Props) {
   }, [notes, sessionId, initialNotes]);
 
   return (
-    <div className="bg-zinc-800/60 border border-zinc-700 rounded-2xl p-4 space-y-3">
+    <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-white font-medium text-sm">상담 메모</h3>
+        <h3 className="text-gray-900 font-medium text-sm">상담 메모</h3>
         <span className={`text-xs ${
-          saveStatus === "saved" ? "text-zinc-500" :
-          saveStatus === "saving" ? "text-yellow-500" :
-          "text-red-400"
+          saveStatus === "saved" ? "text-gray-400" :
+          saveStatus === "saving" ? "text-amber-500" :
+          "text-red-500"
         }`}>
           {saveStatus === "saved" && "✓ 저장됨"}
           {saveStatus === "saving" && "저장 중..."}
@@ -61,10 +60,10 @@ export default function NotesPanel({ sessionId, initialNotes = "" }: Props) {
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         placeholder="손님과 합의한 내용을 기록해두세요... (결정된 스타일, 특별 요청사항 등)"
-        className={`w-full h-32 bg-zinc-900/60 border rounded-xl p-3 text-zinc-200 text-sm placeholder-zinc-600 resize-none focus:outline-none transition-colors ${
+        className={`w-full h-32 bg-gray-50 border rounded-xl p-3 text-gray-700 text-sm placeholder-gray-400 resize-none focus:outline-none transition-colors ${
           saveStatus === "error"
-            ? "border-red-600 focus:border-red-500"
-            : "border-zinc-700 focus:border-emerald-500"
+            ? "border-red-300 focus:border-red-400"
+            : "border-gray-200 focus:border-violet-500"
         }`}
       />
     </div>

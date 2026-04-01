@@ -4,6 +4,19 @@ from PIL import Image
 import cv2
 import numpy as np
 
+# [P2-9] OpenCV cascade classifier를 모듈 레벨에서 lazy 로드
+_face_cascade: cv2.CascadeClassifier | None = None
+
+
+def _get_face_cascade() -> cv2.CascadeClassifier:
+    """CascadeClassifier를 한 번만 로드하여 재사용."""
+    global _face_cascade
+    if _face_cascade is None:
+        _face_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        )
+    return _face_cascade
+
 
 def preprocess_photo(image_bytes: bytes, max_size: int = 1000) -> bytes:
     """
@@ -18,15 +31,13 @@ def preprocess_photo(image_bytes: bytes, max_size: int = 1000) -> bytes:
     if img is None:
         raise ValueError("Cannot decode image")
 
-    face_cascade = cv2.CascadeClassifier(
-        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    )
+    face_cascade = _get_face_cascade()
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(100, 100))
 
     if len(faces) > 0:
         x, y, w, h = faces[0]
-        # 헤어스타일 시뮬레이션용 — 머리 위/옆 공간과 어깨까지 넉넉하게 포함
+        # 헤어스타일 시뮬레이션용 -- 머리 위/옆 공간과 어깨까지 넉넉하게 포함
         pad_x = int(w * 1.2)   # 좌우 여백 (얼굴 너비의 120%)
         pad_top = int(h * 1.5) # 위 여백 (헤어스타일 공간 확보)
         pad_bot = int(h * 1.5) # 아래 여백 (어깨까지 포함)
@@ -60,7 +71,6 @@ def compose_side_by_side(person_bytes: bytes, reference_bytes: bytes, target_hei
     """
     손님 사진과 헤어 참고 이미지를 좌우로 합성.
     두 이미지 높이를 target_height에 맞추고 가로로 이어붙임.
-    FLUX에 전달해 "오른쪽 헤어를 왼쪽 사람에게 적용" 프롬프트와 함께 사용.
     """
     def load_and_resize(data: bytes) -> Image.Image:
         img = Image.open(io.BytesIO(data)).convert("RGB")
@@ -79,6 +89,41 @@ def compose_side_by_side(person_bytes: bytes, reference_bytes: bytes, target_hei
     canvas.paste(left, (0, 0))
     canvas.paste(divider, (left.width, 0))
     canvas.paste(right, (left.width + 4, 0))
+
+    buf = io.BytesIO()
+    canvas.save(buf, format="JPEG", quality=90)
+    return buf.getvalue()
+
+
+def compose_three_way(person_bytes: bytes, front_bytes: bytes, side_bytes: bytes, target_height: int = 800) -> bytes:
+    """
+    손님 사진 + 정면 참고 + 측면 참고 이미지를 좌우로 합성.
+    [LEFT: 손님] | [MIDDLE: 정면 참고] | [RIGHT: 측면 참고]
+    """
+    def load_and_resize(data: bytes) -> Image.Image:
+        img = Image.open(io.BytesIO(data)).convert("RGB")
+        ratio = target_height / img.height
+        new_w = int(img.width * ratio)
+        return img.resize((new_w, target_height), Image.LANCZOS)
+
+    left = load_and_resize(person_bytes)
+    middle = load_and_resize(front_bytes)
+    right = load_and_resize(side_bytes)
+
+    divider = Image.new("RGB", (4, target_height), (60, 60, 60))
+
+    total_w = left.width + 4 + middle.width + 4 + right.width
+    canvas = Image.new("RGB", (total_w, target_height), (30, 30, 30))
+    x = 0
+    canvas.paste(left, (x, 0))
+    x += left.width
+    canvas.paste(divider, (x, 0))
+    x += 4
+    canvas.paste(middle, (x, 0))
+    x += middle.width
+    canvas.paste(divider, (x, 0))
+    x += 4
+    canvas.paste(right, (x, 0))
 
     buf = io.BytesIO()
     canvas.save(buf, format="JPEG", quality=90)
