@@ -4,7 +4,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, field_validator
 
-from app.db.client import get_db
+from app.db.client import get_db, get_auth_client
 from app.db.queries import copy_default_catalog, DEMO_SALON_ID
 from app.deps import get_current_user
 
@@ -116,9 +116,10 @@ async def register(body: RegisterRequest):
     except Exception as e:
         logger.error("Default catalog copy failed for salon %s: %s", salon["id"], e)
 
-    # 5. 로그인해서 토큰 발급
+    # 5. 로그인해서 토큰 발급 — 별도 클라이언트 사용 (메인 클라이언트 auth 상태 오염 방지)
     try:
-        login_res = db.auth.sign_in_with_password(
+        auth_client = get_auth_client()
+        login_res = auth_client.auth.sign_in_with_password(
             {"email": body.email, "password": body.password}
         )
     except Exception as e:
@@ -163,9 +164,10 @@ async def login(body: LoginRequest):
     """로그인: Supabase Auth로 인증 후 designer 정보 반환"""
     db = get_db()
 
-    # 1. Supabase Auth 로그인
+    # 1. Supabase Auth 로그인 — 별도 클라이언트 사용 (메인 클라이언트 오염 방지)
     try:
-        login_res = db.auth.sign_in_with_password(
+        auth_client = get_auth_client()
+        login_res = auth_client.auth.sign_in_with_password(
             {"email": body.email, "password": body.password}
         )
     except Exception as e:
@@ -212,10 +214,10 @@ class RefreshRequest(BaseModel):
 @router.post("/refresh")
 async def refresh_token(body: RefreshRequest):
     """Refresh token으로 새 access token 발급."""
-    db = get_db()
 
     try:
-        refresh_res = db.auth.refresh_session(body.refresh_token)
+        auth_client = get_auth_client()
+        refresh_res = auth_client.auth.refresh_session(body.refresh_token)
         session = refresh_res.session
     except Exception as e:
         logger.error("Token refresh failed: %s", e)
@@ -241,9 +243,10 @@ async def social_login(body: SocialLoginRequest):
     """
     db = get_db()
 
-    # 1. access_token으로 Supabase 유저 정보 조회
+    # 1. access_token으로 Supabase 유저 정보 조회 — 별도 클라이언트 사용
     try:
-        user_res = db.auth.get_user(body.access_token)
+        auth_client = get_auth_client()
+        user_res = auth_client.auth.get_user(body.access_token)
         auth_user = user_res.user
     except Exception as e:
         logger.error("Social login token verification failed: %s", e)

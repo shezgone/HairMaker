@@ -33,8 +33,5 @@ def get_db() -> Client:
 
 
 def get_auth_client() -> Client:
-    """인증 검증 전용 클라이언트. get_db()와 분리하여 auth 상태 오염을 방지."""
-    global _auth_client
-    if _auth_client is None:
-        _auth_client = create_client(settings.supabase_url, settings.supabase_service_role_key)
-    return _auth_client
+    """인증 작업 전용 클라이언트. 매번 새로 생성하여 auth 상태 오염을 원천 차단."""
+    return create_client(settings.supabase_url, settings.supabase_service_role_key)
