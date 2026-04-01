@@ -70,3 +70,15 @@ async def health_check():
 
 
 logger.info("HairMaker API started (env=%s)", settings.environment)
+
+
+@app.get("/debug/env-check")
+async def debug_env():
+    """임시 디버그 — 배포 후 삭제할 것"""
+    from app.config import settings
+    key = settings.supabase_service_role_key
+    return {
+        "key_prefix": key[:15] if key else "MISSING",
+        "key_length": len(key) if key else 0,
+        "supabase_url": settings.supabase_url[:40],
+    }
